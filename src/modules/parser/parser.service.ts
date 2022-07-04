@@ -1,182 +1,116 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  Injectable,
+  Inject,
+  InternalServerErrorException,
+  LoggerService,
+} from '@nestjs/common';
+import { Helpers } from './helpers/helper';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import { createReadStream, ReadStream } from 'fs';
-import { join } from 'path';
-import { Obituary } from './enums/obituary.enum';
-import { ReportType } from './enums/report-type.enum';
-import { DeathInterface } from './interfaces/deaths.interface';
-import { KillsInterface } from './interfaces/kills.interface';
-import { MatchHelper } from '../../global/helpers/mth.helper';
+import { TotalReportDto } from './dtos/total-report.dto';
+import { NewGameReportDto } from './dtos/game-report.dto';
 
 @Injectable()
 export class ParserService {
   constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: any,
-    private configService: ConfigService = new ConfigService(),
+    //@Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+    private readonly helpers: Helpers,
   ) {}
-
-  private readStream: ReadStream;
-  private matchesObj = Object.assign({}, Array);
-  private matchCount = 0;
-  private killDataCount = 0;
-  private killObj = Object.assign({}, Array);
-  private players = [];
-  private matchKill: KillsInterface;
-  private matchDeath: DeathInterface;
-  private deathObj = Object.assign({}, Array);
-
-  private resetMatchObj(): void {
-    this.matchKill = {
-      total_kills: 0,
-      players: [],
-      kills: {},
-    };
-
-    this.matchDeath = {
-      kills_by_means: {},
-    };
+  // Report all games
+  async getResultGames() {
+    const file = await this.helpers.readFile();
+    const report = await this.helpers
+      .mainReport(file)
+      .then((res) => res)
+      .catch((err) => {
+        this.logger.error(err);
+        throw new InternalServerErrorException(err);
+      });
+    return report;
+  }
+  // Report games per game
+  async getReportGamesByGame(game: number): Promise<NewGameReportDto> {
+    const report = await this.helpers.readFile();
+    const totalGames = await this.helpers
+      .TotalReport(report, game)
+      .then((res) => res)
+      .catch((err) => {
+        this.logger.error(err);
+        throw new InternalServerErrorException(err);
+      });
+    const objectSorted = await this.sortByKills(totalGames, game);
+    return objectSorted;
   }
 
-  private initMatch(): void {
-    this.matchCount++;
-    this.killDataCount = 0;
-    this.killObj = Object.assign({}, Array);
-    this.deathObj = Object.assign({}, Array);
-    this.players = [];
-    this.resetMatchObj();
-  }
+  async sortByKills(
+    game: NewGameReportDto[],
+    index,
+  ): Promise<NewGameReportDto> {
+    const killByMeans = [];
+    const generalRanking = [];
+    const killedByWorld = [];
 
-  private addPlayer(player: string): void {
-    if (player !== '') {
-      this.players[player] = player;
-      this.matchKill.players = Object.keys(this.players);
-      this.initKillRanking(player);
-    }
-  }
+    killByMeans.push(Object.assign(game[`game_${index}`]).kill_by_means);
+    generalRanking.push(Object.assign(game[`game_${index}`]).general_ranking);
+    killedByWorld.push(Object.assign(game[`game_${index}`]).killed_by_world);
 
-  private initKillRanking(player): void {
-    if (!this.killObj[player]) {
-      this.killObj[player] = 0;
-      this.matchKill.kills = this.killObj;
-    }
-  }
-
-  private clearReturnObjs(): void {
-    this.matchCount = 0;
-    this.matchesObj = Object.assign({}, Array);
-    this.matchesObj = Object.assign({}, Array);
-    this.matchCount = 0;
-    this.killDataCount = 0;
-    this.killObj = Object.assign({}, Array);
-    this.players = [];
-    this.resetMatchObj();
-    this.deathObj = Object.assign({}, Array);
-  }
-
-  private addKill(player: string): void {
-    this.killObj[player] = this.killObj[player] ? this.killObj[player] + 1 : 1;
-  }
-
-  private removeKill(player: string): void {
-    this.killObj[player] = this.killObj[player] ? this.killObj[player] - 1 : -1;
-  }
-
-  private joinKillData(killData: any[]): void {
-    const [killer, dead] = killData;
-    if (MatchHelper.verifyKillerIsWorld(killer)) {
-      this.addPlayer(dead);
-      this.removeKill(dead);
-    } else if (killer !== dead) {
-      this.addPlayer(killer);
-      this.addKill(killer);
-    }
-    this.killDataCount++;
-    this.matchKill.kills = this.killObj;
-    this.matchKill.total_kills = this.killDataCount;
-  }
-
-  private loadStream(): void {
-    this.readStream = createReadStream(
-      join(process.cwd(), this.configService.get('LOG_PATH')),
+    const killByMeansToSort = Object.entries(killByMeans[0]).sort(
+      this.helpers.sortRanking,
     );
-  }
 
-  private processKillData(rows: any[]): void {
-    if (rows) {
-      rows.map((row) => {
-        if (MatchHelper.verifyInitMatch(row)) {
-          this.initMatch();
-        }
-        const getPlayerName = MatchHelper.getClientUserinfoChanged(row);
-        this.addPlayer(getPlayerName);
+    const generalRankingToSort = Object.entries(generalRanking[0]).sort(
+      this.helpers.sortRanking,
+    );
 
-        const killData = MatchHelper.getKillData(row);
-        if (killData) {
-          this.joinKillData(killData as any[]);
-        }
-        if (this.matchKill.players.length > 0) {
-          this.matchesObj[`game_${this.matchCount}`] = this.matchKill;
-        }
-      });
-    }
-  }
+    const killedByWorldToSort = Object.entries(killedByWorld[0]).sort(
+      this.helpers.sortRanking,
+    );
 
-  private processDeathData(rows: any[]): void {
-    if (rows) {
-      let init = false;
-      rows.map((row) => {
-        if (MatchHelper.verifyInitMatch(row)) {
-          init = true;
-          this.initMatch();
-        }
-        const killData = MatchHelper.getKillData(row);
-        if (killData) {
-          const modKill = (killData as any[]).pop();
-          if (Object.values(Obituary).includes(modKill)) {
-            this.deathObj[modKill] = this.deathObj[modKill]
-              ? this.deathObj[modKill] + 1
-              : 1;
-            this.matchDeath.kills_by_means = this.deathObj;
-          }
-        }
-        if (init) {
-          this.matchesObj[`game_${this.matchCount}`] = this.matchDeath;
-        }
-      });
-    }
-  }
+    let killByMeansSorted = {};
+    let generalRankingSorted = {};
+    let killedByWorldSorted = {};
 
-  private processStreamData(callback: any, type: ReportType): void {
-    this.readStream.on('readable', () => {
-      let dataChunck;
-      while ((dataChunck = this.readStream.read()) !== null) {
-        const rows = dataChunck.toString().split('\n');
-        switch (type) {
-          case ReportType.KILLS:
-            this.processKillData(rows);
-            break;
-          case ReportType.DEATHS:
-            this.processDeathData(rows);
-            break;
-        }
-      }
+    killByMeansToSort.map((item) => {
+      killByMeansSorted = {
+        ...killByMeansSorted,
+
+        [item[0]]: item[1],
+      };
     });
 
-    this.readStream.on('end', () => {
-      callback(this.matchesObj);
+    generalRankingToSort.map((item) => {
+      generalRankingSorted = {
+        ...generalRankingSorted,
+
+        [item[0]]: item[1],
+      };
     });
-  }
 
-  public getKillData(callback: any): void {
-    this.clearReturnObjs();
-    this.loadStream();
-    this.processStreamData(callback, ReportType.KILLS);
-  }
+    killedByWorldToSort.map((item) => {
+      killedByWorldSorted = {
+        ...killedByWorldSorted,
 
-  public getDeathData(callback: any): void {
-    this.clearReturnObjs();
-    this.loadStream();
-    this.processStreamData(callback, ReportType.DEATHS);
+        [item[0]]: item[1],
+      };
+    });
+
+    Object.assign(game[`game_${index}`]).kill_by_means = {
+      ...killByMeansSorted,
+    };
+    Object.assign(game[`game_${index}`]).general_ranking = {
+      ...generalRankingSorted,
+    };
+    Object.assign(game[`game_${index}`]).killed_by_world = {
+      ...killedByWorldSorted,
+    };
+
+    const newsGameObject: TotalReportDto = {
+      kills_by_means: { ...killByMeansSorted },
+      general_ranking: { ...generalRankingSorted },
+      killed_by_world: { ...killedByWorldSorted },
+    };
+
+    const newGame: NewGameReportDto = { [`game_${index}`]: newsGameObject };
+    return newGame;
   }
 }
