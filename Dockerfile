@@ -15,8 +15,8 @@ FROM node:16.13.1-alpine as run
 
 WORKDIR /usr/app
 
-RUN mkdir -p /usr/app/log && chmod 777 /usr/app/log
-COPY ./log /usr/app/log
+RUN mkdir -p /usr/app/game-log && chmod 777 /usr/app/game-log
+COPY ./game-log /usr/app/game-log
 COPY package.json .
 COPY .stage.prod.env ./
 COPY --from=build /usr/app/dist ./
