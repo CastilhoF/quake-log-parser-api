@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/CastilhoF" target="blank"><img src="./img/image_Castilho.png" width="420" alt="Castilho Logo" /></a>
+  <a href="https://github.com/CastilhoF" target="blank"><img src="https://i.imgur.com/6jenBxp.png" width="420" alt="Castilho Logo" /></a>
   
 </p>
 
