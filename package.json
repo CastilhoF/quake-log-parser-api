@@ -12,7 +12,7 @@
     "start": "PORT=3000 nest start",
     "start:dev": "PORT=3000 STAGE=dev nest start --watch",
     "start:debug": "PORT=3000 STAGE=dev nest start --debug --watch",
-    "start:prod": "PORT=3000 STAGE=prod node core/main.js",
+    "start:prod": "PORT=3000 STAGE=prod node main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "PORT=3000 STAGE=dev jest",
     "test:watch": "jest --watch",

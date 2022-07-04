@@ -8,5 +8,5 @@ services:
       target: run
     hostname: balder
     ports:
-      - "3007:3007"
+      - "3000:3000"
     restart: on-failure
